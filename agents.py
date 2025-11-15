@@ -1,82 +1,54 @@
 # agents.py
 from openai import OpenAI
+import json
 import os
 
-# --- Configuration OpenRouter ---
 client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.environ.get("OPENROUTER_API_KEY"),
+    api_key=os.getenv("OPENROUTER_API_KEY"),
+    base_url="https://openrouter.ai/api/v1"
 )
 
-# --- Fonction générique pour chaque agent ---
-def agent(role: str, prompt: str, contexte: str = ""):
-    """
-    Exécute un agent avec un rôle spécifique.
-    Chaque agent agit comme un expert spécialisé.
-    """
-    instructions = {
-        "analyste": (
-            "Tu es un expert en analyse de problématiques complexes. "
-            "Identifie les causes, enjeux et implications du sujet."
-        ),
-        "chercheur": (
-            "Tu es un chercheur en veille technologique. "
-            "Ta mission est de compléter les informations grâce à des faits récents ou des données connues."
-        ),
-        "synthese": (
-            "Tu es un expert en communication claire. "
-            "Résume les contributions précédentes de manière structurée et concise."
-        ),
-    }
-
-    role_prompt = instructions.get(role, "Tu es un assistant généraliste compétent.")
-    full_prompt = f"{role_prompt}\n\nContexte : {contexte}\n\nTâche : {prompt}"
-
-    try:
-        response = client.chat.completions.create(
-            model="nvidia/nemotron-nano-9b-v2:free",  # modèle rapide et gratuit sur OpenRouter
-            messages=[
-                {"role": "system", "content": role_prompt},
-                {"role": "user", "content": full_prompt}
-            ]
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return f"[Erreur avec l'agent {role}] : {e}"
+if not client.api_key:
+    raise Exception("❌ Aucune clé API détectée pour OpenRouter !")
 
 
-# --- Fonction de collaboration entre plusieurs agents ---
-def equipe_collaborative(question: str, contexte: str = "", roles=None):
-    """
-    Simule une équipe d'agents collaboratifs.
-    Les rôles actifs sont passés en paramètre (ex: ["analyste", "chercheur", "synthese"]).
-    """
-    if roles is None:
-        roles = ["analyste", "chercheur", "synthese"]
+# === DÉFINITION DES AGENTS ===
+def agent(role, prompt):
+    response = client.chat.completions.create(
+        model="nvidia/nemotron-nano-9b-v2:free",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
 
-    discussions = []
-    resultats = {}
+def agent_analyste(question):
+    return agent("analyste", f"Analyse en profondeur la question suivante : {question}")
 
-    # Étape 1 : Analyse
+def agent_chercheur(question):
+    return agent("chercheur", f"Fais des recherches sur Internet (ou simule-les) pour répondre à : {question}")
+
+def agent_synthese(analyses):
+    return agent("synthèse", f"Combine ces informations et rédige une réponse claire et complète :\n\n{analyses}")
+
+# === COORDINATEUR ===
+def equipe_collaborative(question, roles=None, contexte=None):
+    roles = roles or ["analyste", "chercheur", "synthèse"]
+    results = {}
+
+    # Tu peux utiliser le contexte si tu veux
+    contexte_txt = f"\n\nContexte utile : {contexte}" if contexte else ""
+
+     # 1. Analyse
     if "analyste" in roles:
-        analyse = agent("analyste", f"Analyse la question suivante : {question}", contexte)
-        resultats["analyste"] = analyse
-        discussions.append(f"🧩 **Analyse** : {analyse}")
+        results["analyse"] = agent_analyste(question + contexte_txt)
 
-    # Étape 2 : Recherche complémentaire
+    # 2. Recherche
     if "chercheur" in roles:
-        base_contexte = resultats.get("analyste", contexte)
-        recherche = agent("chercheur", f"Approfondis les informations sur : {question}", base_contexte)
-        resultats["chercheur"] = recherche
-        discussions.append(f"🔎 **Recherche** : {recherche}")
+        results["recherche"] = agent_chercheur(question + contexte_txt)
 
-    # Étape 3 : Synthèse finale
-    if "synthese" in roles:
-        base_contexte = "\n\n".join(resultats.values())
-        synthese = agent("synthese", f"Rédige une synthèse claire et argumentée sur : {question}", base_contexte)
-        resultats["synthese"] = synthese
-        discussions.append(f"🧠 **Synthèse finale** : {synthese}")
+    # 3. Synthèse
+    synthese_input = "\n\n".join(
+        f"{k.upper()}:\n{v}" for k, v in results.items()
+    )
+    results["finale"] = agent_synthese(synthese_input)
 
-    # --- Résumé final ---
-    resultat_final = "\n\n".join(discussions)
-    return resultat_final
+    return results
