@@ -11,7 +11,7 @@ import os
 ctk.set_appearance_mode("dark")
 app = ctk.CTk()
 app.title("Agent collaboratif intelligent")
-app.geometry("850x850")
+app.geometry("850x640")
 
 # === Fichier mémoire persistante ===
 MEMORY_FILE = "memoire.json"
@@ -111,7 +111,7 @@ def reset_memory():
 # === Interface graphique ===
 
 # Zone de texte principale
-chat_box = ctk.CTkTextbox(app, wrap="word", width=800, height=600)
+chat_box = ctk.CTkTextbox(app, wrap="word", width=800, height=450)
 chat_box.pack(pady=10)
 
 # Chargement mémoire
